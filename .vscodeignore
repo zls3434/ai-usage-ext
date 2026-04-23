@@ -8,3 +8,5 @@ tsconfig.json**
 spec.md
 tasks.md
 checklist.md
+refer-files/**
+test-*.js

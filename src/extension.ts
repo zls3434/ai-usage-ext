@@ -1,7 +1,7 @@
 /**
  * @fileoverview AI Usage Monitor 扩展入口文件
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose VSCode/Trae CN 扩展插件入口，负责插件的激活和停用生命周期管理
  */
 

@@ -1,8 +1,9 @@
 /**
  * @fileoverview 扩展主控制器，协调各模块之间的交互
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 作为插件核心协调器，管理定时器、命令注册、状态栏更新和数据获取的完整流程
+ * @modified 2026-04-23 - 状态栏左键点击改为弹出 QuickPick 菜单，移除右键菜单方案
  */
 
 import * as vscode from 'vscode';
@@ -14,12 +15,28 @@ import { LoginPanel } from '../webview/loginPanel';
 import { UsageStatus, UPDATE_INTERVALS } from '../models/usageData';
 
 /**
+ * QuickPick 菜单项定义
+ * @description 定义状态栏左键菜单中的每个选项
+ */
+interface MenuItem {
+    /** 显示标签 */
+    label: string;
+    /** 详细描述 */
+    description?: string;
+    /** 图标 codicon 名称 */
+    iconPath?: vscode.ThemeIcon;
+    /** 关联的命令标识符 */
+    command: string;
+}
+
+/**
  * 扩展控制器类
  * @description 插件的核心协调器，负责：
  *              1. 初始化和管理所有子模块
  *              2. 注册和处理 VSCode 命令
  *              3. 管理定时更新逻辑
  *              4. 协调数据获取和状态栏显示
+ *              5. 提供状态栏左键点击的 QuickPick 菜单
  */
 export class ExtensionController {
     /** VSCode 扩展上下文 */
@@ -78,9 +95,6 @@ export class ExtensionController {
 
         /** 注册所有命令 */
         this.registerCommands();
-
-        /** 设置状态栏上下文（用于右键菜单 when 条件） */
-        vscode.commands.executeCommand('setContext', 'aiUsageStatusBarItem', true);
     }
 
     /**
@@ -88,6 +102,7 @@ export class ExtensionController {
      */
     private registerCommands(): void {
         const commands: [string, () => Promise<void> | void][] = [
+            ['aiUsage.showMenu', () => this.showQuickMenu()],
             ['aiUsage.loginOllama', () => this.loginOllama()],
             ['aiUsage.setCookie', () => this.setCookieManual()],
             ['aiUsage.clearCookie', () => this.clearCookie()],
@@ -100,6 +115,102 @@ export class ExtensionController {
         for (const [command, handler] of commands) {
             const disposable = vscode.commands.registerCommand(command, handler);
             this.context.subscriptions.push(disposable);
+        }
+    }
+
+    /**
+     * 显示 QuickPick 菜单
+     * @description 状态栏左键点击时调用，弹出一个 QuickPick 列出所有可用操作
+     *              根据当前状态（是否有 Cookie、自动更新开关等）动态调整菜单项
+     */
+    async showQuickMenu(): Promise<void> {
+        const hasCookie = this.cookieManager.hasCookie();
+        const autoUpdate = this.configManager.getAutoUpdate();
+        const interval = this.configManager.getUpdateInterval();
+        const intervalLabel = UPDATE_INTERVALS.find(i => i.value === interval)?.label || `${interval}s`;
+
+        /** 构建菜单项列表 */
+        const items: (vscode.QuickPickItem & { command: string })[] = [];
+
+        /** 刷新操作 */
+        items.push({
+            label: '$(refresh) Refresh Now',
+            description: 'Fetch latest usage data',
+            command: 'aiUsage.refreshNow',
+        });
+
+        /** 登录/设置 Cookie */
+        if (hasCookie) {
+            items.push({
+                label: '$(key) Re-login to Ollama',
+                description: 'Open login page to get new cookie',
+                command: 'aiUsage.loginOllama',
+            });
+            items.push({
+                label: '$(shield) Set Cookie (Manual)',
+                description: 'Manually paste cookie string',
+                command: 'aiUsage.setCookie',
+            });
+            items.push({
+                label: '$(trash) Clear Cookie',
+                description: 'Remove saved cookie',
+                command: 'aiUsage.clearCookie',
+            });
+        } else {
+            items.push({
+                label: '$(key) Login to Ollama',
+                description: 'Open login page to get cookie',
+                command: 'aiUsage.loginOllama',
+            });
+            items.push({
+                label: '$(shield) Set Cookie (Manual)',
+                description: 'Manually paste cookie string',
+                command: 'aiUsage.setCookie',
+            });
+        }
+
+        /** 分隔线 */
+        items.push({
+            label: '',
+            kind: vscode.QuickPickItemKind.Separator,
+            command: '',
+        } as vscode.QuickPickItem & { command: string });
+
+        /** 自动更新开关 */
+        items.push({
+            label: autoUpdate ? '$(check) Auto Update: ON' : '$(circle-slash) Auto Update: OFF',
+            description: `Current: ${autoUpdate ? 'Enabled' : 'Disabled'}`,
+            command: 'aiUsage.toggleAutoUpdate',
+        });
+
+        /** 更新频率 */
+        items.push({
+            label: '$(clock) Update Interval',
+            description: `Current: ${intervalLabel}`,
+            command: 'aiUsage.setUpdateInterval',
+        });
+
+        /** 分隔线 */
+        items.push({
+            label: '',
+            kind: vscode.QuickPickItemKind.Separator,
+            command: '',
+        } as vscode.QuickPickItem & { command: string });
+
+        /** 打开 Ollama 设置页 */
+        items.push({
+            label: '$(globe) Open Ollama Settings',
+            description: 'Open ollama.com/settings in browser',
+            command: 'aiUsage.openSettings',
+        });
+
+        const selected = await vscode.window.showQuickPick(items, {
+            title: '🦙 AI Usage Monitor — Ollama',
+            placeHolder: 'Select an action...',
+        });
+
+        if (selected && selected.command) {
+            await vscode.commands.executeCommand(selected.command);
         }
     }
 

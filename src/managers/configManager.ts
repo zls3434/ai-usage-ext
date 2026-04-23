@@ -1,7 +1,7 @@
 /**
  * @fileoverview 配置管理器，负责读取和监听用户配置变更
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 管理 VSCode 设置中的插件配置项，包括更新频率、自动更新开关等
  */
 

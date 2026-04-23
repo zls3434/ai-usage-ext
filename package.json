@@ -3,7 +3,7 @@
   "displayName": "AI Usage Monitor",
   "description": "Monitor cloud AI platform API usage in status bar. Currently supports Ollama.",
   "version": "0.1.0",
-  "publisher": "qiweizhe",
+  "publisher": "zls3434",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -16,6 +16,10 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "aiUsage.showMenu",
+        "title": "AI Usage: Show Menu"
+      },
       {
         "command": "aiUsage.loginOllama",
         "title": "AI Usage: Login Ollama"
@@ -66,38 +70,6 @@
           "description": "Enable auto update"
         }
       }
-    },
-    "menus": {
-      "statusBar/context": [
-        {
-          "command": "aiUsage.loginOllama",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.setCookie",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.clearCookie",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.toggleAutoUpdate",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.setUpdateInterval",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.refreshNow",
-          "when": "aiUsageStatusBarItem"
-        },
-        {
-          "command": "aiUsage.openSettings",
-          "when": "aiUsageStatusBarItem"
-        }
-      ]
     }
   },
   "scripts": {

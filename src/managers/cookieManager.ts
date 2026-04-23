@@ -1,7 +1,7 @@
 /**
  * @fileoverview Cookie 管理器，负责 Cookie 的存储、检索和 WebView 登录
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 管理 Ollama 平台的 Cookie，支持 WebView 登录自动提取和手动设置两种方式
  */
 

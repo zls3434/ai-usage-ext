@@ -1,19 +1,31 @@
 /**
  * @fileoverview Ollama 数据提供者，负责从 Ollama 平台获取和解析用量数据
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 通过 HTTP 请求获取 Ollama settings 页面数据，解析出用量百分比和重置时间
+ * @modified 2026-04-23 - 根据实际页面 HTML 结构重写解析逻辑，修复 session/weekly 数据相同的问题
  */
 
 import * as cheerio from 'cheerio';
 import { AnyNode } from 'domhandler';
 import { HttpClient } from '../utils/httpClient';
-import { UsageData, UsageResult, UsageStatus, RawUsageData } from '../models/usageData';
+import { UsageData, UsageResult, UsageStatus } from '../models/usageData';
 
 /**
  * Ollama 数据提供者类
  * @description 从 Ollama 云平台的 /settings 页面获取用量信息，
- *              解析 HTML 中的用量数据并返回结构化的结果
+ *              基于 ollama.com/settings 的实际 HTML 结构解析用量数据
+ *
+ * 页面结构参考（ollama-settings-page.html）：
+ * - Session usage 区域包含：
+ *   <span class="text-sm">4.5% used</span>          — 用量百分比
+ *   <div style="width: 4.5%"></div>                 — 进度条宽度
+ *   <div class="local-time" data-time="2026-04-23T11:00:00Z">Resets in 4 hours</div> — 重置时间
+ *
+ * - Weekly usage 区域包含：
+ *   <span class="text-sm">39.8% used</span>          — 用量百分比
+ *   <div style="width: 39.8%"></div>                 — 进度条宽度
+ *   <div class="local-time" data-time="2026-04-27T00:00:00Z">Resets in 3 days</div> — 重置时间
  */
 export class OllamaProvider {
     /** HTTP 客户端实例，用于发送请求 */
@@ -44,7 +56,7 @@ export class OllamaProvider {
 
     /**
      * 获取用量数据
-     * @description 先尝试 JSON API，如果失败则回退到 HTML 解析
+     * @description 请求 ollama.com/settings 页面，解析 HTML 提取用量信息
      * @returns 用量数据结果
      */
     async fetchUsage(): Promise<UsageResult> {
@@ -55,15 +67,13 @@ export class OllamaProvider {
         }
 
         try {
-            /** 首先尝试 HTML 页面解析（当前主要方式） */
             const html = await this.httpClient.get('/settings');
 
             if (!html || html.trim().length === 0) {
                 throw new Error('Empty response from Ollama settings page');
             }
 
-            const rawUsage = this.parseUsageFromHtml(html);
-            const usageData = this.convertRawUsageData(rawUsage);
+            const usageData = this.parseUsageFromHtml(html);
             this.lastKnownData = usageData;
 
             return {
@@ -99,184 +109,71 @@ export class OllamaProvider {
 
     /**
      * 从 HTML 页面中解析用量数据
-     * @description 使用 cheerio 解析 ollama.com/settings 页面 HTML
-     *              提取 session 和 weekly 的用量百分比以及重置时间
+     * @description 基于 ollama.com/settings 页面的实际 HTML 结构解析。
+     *              页面中有两个用量区域，分别以 "Session usage" 和 "Weekly usage" 标识。
+     *              解析策略：
+     *              1. 精确匹配：找到包含 "Session usage" 和 "Weekly usage" 文本的容器
+     *              2. 从容器内提取百分比文本（如 "4.5% used"）
+     *              3. 从 data-time 属性提取重置时间戳（精确到秒的 ISO 时间）
+     *              4. 回退策略：如果精确匹配失败，尝试进度条 style width 和 "Resets in" 文本
      * @param html - 页面 HTML 字符串
-     * @returns 原始用量数据
-     */
-    private parseUsageFromHtml(html: string): RawUsageData {
-        const $ = cheerio.load(html);
-
-        let sessionUsageStr = '';
-        let weeklyUsageStr = '';
-        let sessionResetStr: string | undefined;
-        let weeklyResetStr: string | undefined;
-
-        /**
-         * 策略 1: 查找包含用量信息的进度条或百分比文本
-         * Ollama settings 页面通常用进度条展示用量
-         * 尝试匹配多种可能的 HTML 结构
-         */
-
-        /** 查找所有文本内容中包含百分比的部分 */
-        const percentageRegex = /(\d+(?:\.\d+)?)\s*%/g;
-        const percentages: string[] = [];
-
-        $('*').each((_index: number, element: AnyNode) => {
-            const el = $(element);
-            const text = el.text().trim();
-            let match: RegExpExecArray | null;
-            const localPercentages: string[] = [];
-            percentageRegex.lastIndex = 0;
-
-            while ((match = percentageRegex.exec(text)) !== null) {
-                localPercentages.push(match[1]);
-            }
-
-            /** 如果一个元素中只包含一个百分比，可能就是用量信息 */
-            if (localPercentages.length === 1) {
-                percentages.push(localPercentages[0]);
-            }
-        });
-
-        /**
-         * 策略 2: 查找 aria-valuenow 属性（进度条）
-         */
-        $('[aria-valuenow]').each((_index: number, element: AnyNode) => {
-            const value = $(element).attr('aria-valuenow');
-            if (value) {
-                percentages.push(value);
-            }
-        });
-
-        /**
-         * 策略 3: 查找 style 中的 width 百分比
-         */
-        $('[style*="width"]').each((_index: number, element: AnyNode) => {
-            const style = $(element).attr('style') || '';
-            const widthMatch = style.match(/width:\s*(\d+(?:\.\d+)?)%/);
-            if (widthMatch) {
-                percentages.push(widthMatch[1]);
-            }
-        });
-
-        /**
-         * 策略 4: 查找特定关键词附近的文本
-         * 如 "Session"、"5 hours"、"Weekly"、"7 days" 等关键词
-         */
-        const sessionKeywords = ['session', '5 hour', '5h'];
-        const weeklyKeywords = ['weekly', '7 day', 'week'];
-
-        $('*').each((_index: number, element: AnyNode) => {
-            const el = $(element);
-            const text = el.text().toLowerCase();
-
-            for (const keyword of sessionKeywords) {
-                if (text.includes(keyword)) {
-                    const parent = el.parent();
-                    const parentText = parent.text();
-                    const match = parentText.match(/(\d+(?:\.\d+)?)\s*%/);
-                    if (match) {
-                        sessionUsageStr = match[1];
-                    }
-                }
-            }
-
-            for (const keyword of weeklyKeywords) {
-                if (text.includes(keyword)) {
-                    const parent = el.parent();
-                    const parentText = parent.text();
-                    const match = parentText.match(/(\d+(?:\.\d+)?)\s*%/);
-                    if (match) {
-                        weeklyUsageStr = match[1];
-                    }
-                }
-            }
-        });
-
-        /**
-         * 策略 5: 解析页面中的时间信息（剩余时间）
-         * 查找如 "2h 30m"、"3d 12h"、"resets in" 等模式
-         */
-        const timeRegex = /(\d+h(?:\s*\d+m)?)|\d+d(?:\s*\d+h)?|\d+m/g;
-        const resetTimeRegex = /(?:resets?\s+in|resets?\s+after|next\s+reset[:\s]+)([^.]+)/gi;
-
-        $('*').each((_index: number, element: AnyNode) => {
-            const el = $(element);
-            const text = el.text();
-
-            if (!sessionResetStr) {
-                const lowerText = text.toLowerCase();
-                if (lowerText.includes('session') || lowerText.includes('5 hour') || lowerText.includes('5h')) {
-                    let resetMatch: RegExpExecArray | null;
-                    resetTimeRegex.lastIndex = 0;
-                    while ((resetMatch = resetTimeRegex.exec(text)) !== null) {
-                        sessionResetStr = resetMatch[1].trim();
-                    }
-                }
-            }
-
-            if (!weeklyResetStr) {
-                const lowerText = text.toLowerCase();
-                if (lowerText.includes('weekly') || lowerText.includes('7 day') || lowerText.includes('week')) {
-                    let resetMatch: RegExpExecArray | null;
-                    resetTimeRegex.lastIndex = 0;
-                    while ((resetMatch = resetTimeRegex.exec(text)) !== null) {
-                        weeklyResetStr = resetMatch[1].trim();
-                    }
-                }
-            }
-        });
-
-        /** 如果没有通过关键词找到数据，使用前两个百分比作为 session 和 weekly */
-        if (!sessionUsageStr && percentages.length >= 1) {
-            sessionUsageStr = percentages[0];
-        }
-        if (!weeklyUsageStr && percentages.length >= 2) {
-            weeklyUsageStr = percentages[1];
-        }
-
-        return {
-            sessionUsageStr,
-            weeklyUsageStr,
-            sessionResetStr,
-            weeklyResetStr,
-        };
-    }
-
-    /**
-     * 将原始用量数据转换为结构化数据
-     * @param raw - 从 HTML 解析的原始数据
      * @returns 结构化的用量数据
      */
-    private convertRawUsageData(raw: RawUsageData): UsageData {
+    private parseUsageFromHtml(html: string): UsageData {
+        const $ = cheerio.load(html);
         const now = new Date();
 
-        /** 解析用量百分比 */
-        const sessionUsagePercent = parseFloat(raw.sessionUsageStr) || 0;
-        const weeklyUsagePercent = parseFloat(raw.weeklyUsageStr) || 0;
-
-        /** 解析重置时间 */
+        let sessionUsagePercent = 0;
+        let weeklyUsagePercent = 0;
         let sessionResetDate: Date | undefined;
         let weeklyResetDate: Date | undefined;
 
-        if (raw.sessionResetStr) {
-            sessionResetDate = this.parseResetTime(raw.sessionResetStr, now);
-        } else {
-            /** 如果没有找到具体的重置时间，假设 5 小时周期的中间点 */
-            sessionResetDate = new Date(now.getTime() + 2.5 * 60 * 60 * 1000);
+        /**
+         * 精确解析策略：
+         * 找到所有包含 "session usage" 或 "weekly usage" 文本的元素，
+         * 然后向上查找其父级容器，在容器内提取百分比和时间数据
+         */
+        const usageBlocks = this.findUsageBlocks($);
+
+        if (usageBlocks.session) {
+            const sessionData = this.extractBlockData($, usageBlocks.session);
+            if (sessionData) {
+                sessionUsagePercent = sessionData.percent;
+                sessionResetDate = sessionData.resetDate;
+            }
         }
 
-        if (raw.weeklyResetStr) {
-            weeklyResetDate = this.parseResetTime(raw.weeklyResetStr, now);
-        } else {
-            /** 如果没有找到具体的重置时间，假设一周周期的中间点 */
-            weeklyResetDate = new Date(now.getTime() + 3.5 * 24 * 60 * 60 * 1000);
+        if (usageBlocks.weekly) {
+            const weeklyData = this.extractBlockData($, usageBlocks.weekly);
+            if (weeklyData) {
+                weeklyUsagePercent = weeklyData.percent;
+                weeklyResetDate = weeklyData.resetDate;
+            }
+        }
+
+        /**
+         * 回退策略：如果精确匹配未找到数据
+         * 尝试通过进度条 style width 和 data-time 属性直接提取
+         */
+        if (sessionUsagePercent === 0 && weeklyUsagePercent === 0) {
+            const fallbackData = this.fallbackParse($);
+            if (fallbackData.sessionPercent > 0) {
+                sessionUsagePercent = fallbackData.sessionPercent;
+            }
+            if (fallbackData.weeklyPercent > 0) {
+                weeklyUsagePercent = fallbackData.weeklyPercent;
+            }
+            if (fallbackData.sessionResetDate && !sessionResetDate) {
+                sessionResetDate = fallbackData.sessionResetDate;
+            }
+            if (fallbackData.weeklyResetDate && !weeklyResetDate) {
+                weeklyResetDate = fallbackData.weeklyResetDate;
+            }
         }
 
         return {
-            sessionUsagePercent: Math.round(sessionUsagePercent),
-            weeklyUsagePercent: Math.round(weeklyUsagePercent),
+            sessionUsagePercent: Math.round(sessionUsagePercent * 10) / 10,
+            weeklyUsagePercent: Math.round(weeklyUsagePercent * 10) / 10,
             sessionResetTime: sessionResetDate ? sessionResetDate.getTime() - now.getTime() : undefined,
             weeklyResetTime: weeklyResetDate ? weeklyResetDate.getTime() - now.getTime() : undefined,
             sessionResetDate,
@@ -286,38 +183,229 @@ export class OllamaProvider {
     }
 
     /**
-     * 解析时间字符串为 Date 对象
-     * @description 将如 "2h 30m"、"3d 12h" 这样的时间字符串转换为未来时间点
-     * @param timeStr - 时间字符串
-     * @param base - 基准时间（当前时间）
-     * @returns 对应的未来 Date 对象
+     * 查找 Session 和 Weekly 用量区域的 DOM 节点
+     * @description 在页面中搜索包含 "Session usage" 和 "Weekly usage" 文本的元素，
+     *              返回它们最近的块级父容器
+     * @param $ - cheerio 实例
+     * @returns 包含 session 和 weekly 块索引的对象
      */
-    private parseResetTime(timeStr: string, base: Date): Date {
+    private findUsageBlocks($: cheerio.CheerioAPI): { session: AnyNode | null; weekly: AnyNode | null } {
+        let session: AnyNode | null = null;
+        let weekly: AnyNode | null = null;
+
+        /** 遍历所有包含文本的 span 元素 */
+        $('span').each((_index, element) => {
+            const el = $(element);
+            const text = el.text().trim().toLowerCase();
+
+            if (text.includes('session usage')) {
+                /** 向上查找到包含整个用量块的外层 div */
+                const block = el.closest('div').parent();
+                if (block.length > 0) {
+                    session = block.get(0) || null;
+                }
+            }
+
+            if (text.includes('weekly usage')) {
+                const block = el.closest('div').parent();
+                if (block.length > 0) {
+                    weekly = block.get(0) || null;
+                }
+            }
+        });
+
+        /** 如果通过 span 未找到，尝试遍历所有文本节点 */
+        if (!session || !weekly) {
+            $('*').each((_index, element) => {
+                const el = $(element);
+                const text = el.text().trim().toLowerCase();
+
+                if (!session && text.includes('session usage') && !text.includes('weekly')) {
+                    session = element;
+                }
+                if (!weekly && text.includes('weekly usage')) {
+                    weekly = element;
+                }
+            });
+        }
+
+        return { session, weekly };
+    }
+
+    /**
+     * 从用量块 DOM 中提取百分比和重置时间
+     * @description 从一个用量块（Session 或 Weekly 的容器）中提取：
+     *              - 百分比：从 "4.5% used" 格式的文本中提取
+     *              - 重置时间：优先从 data-time 属性提取 ISO 时间戳，
+     *                回退从 "Resets in X hours/days" 文本提取
+     * @param $ - cheerio 实例
+     * @param block - 用量块的 DOM 元素
+     * @returns 提取的数据，包含百分比和重置时间
+     */
+    private extractBlockData($: cheerio.CheerioAPI, block: AnyNode): { percent: number; resetDate: Date | undefined } | null {
+        const $block = $(block);
+        let percent = 0;
+        let resetDate: Date | undefined;
+
+        /**
+         * 提取百分比 — 方式 1：
+         * 找 "4.5% used" 格式的文本
+         * 在 HTML 中：<span class="text-sm">4.5% used</span>
+         */
+        $block.find('span').each((_index, spanEl) => {
+            const spanText = $(spanEl).text().trim();
+            const percentMatch = spanText.match(/(\d+(?:\.\d+)?)\s*%\s*used/i);
+            if (percentMatch) {
+                percent = parseFloat(percentMatch[1]);
+            }
+        });
+
+        /**
+         * 提取百分比 — 方式 2（回退）：
+         * 找进度条的 style="width: 4.5%"
+         */
+        if (percent === 0) {
+            $block.find('[style*="width"]').each((_index, styleEl) => {
+                const style = $(styleEl).attr('style') || '';
+                const widthMatch = style.match(/width:\s*(\d+(?:\.\d+)?)%/);
+                if (widthMatch) {
+                    percent = parseFloat(widthMatch[1]);
+                }
+            });
+        }
+
+        /**
+         * 提取重置时间 — 方式 1（优先）：
+         * 从 data-time 属性提取 ISO 时间戳
+         * 在 HTML 中：<div class="local-time" data-time="2026-04-23T11:00:00Z">
+         */
+        const localTimeEl = $block.find('.local-time');
+        const dataTime = localTimeEl.attr('data-time');
+        if (dataTime) {
+            const parsed = new Date(dataTime);
+            if (!isNaN(parsed.getTime())) {
+                resetDate = parsed;
+            }
+        }
+
+        /**
+         * 提取重置时间 — 方式 2（回退）：
+         * 从文本 "Resets in 4 hours" 或 "Resets in 3 days" 提取
+         */
+        if (!resetDate) {
+            const resetText = localTimeEl.text().trim();
+            if (resetText) {
+                resetDate = this.parseResetsInText(resetText);
+            }
+        }
+
+        if (percent > 0) {
+            return { percent, resetDate };
+        }
+
+        return null;
+    }
+
+    /**
+     * 回退解析策略
+     * @description 当精确匹配 strategy 失败时，直接通过全局选择器提取
+     *              - 从所有 .local-time 元素的 data-time 属性提取时间
+     *              - 从所有进度条 style width 提取百分比
+     *              - 第一个对应 session，第二个对应 weekly
+     * @param $ - cheerio 实例
+     * @returns 回退解析结果
+     */
+    private fallbackParse($: cheerio.CheerioAPI): {
+        sessionPercent: number;
+        weeklyPercent: number;
+        sessionResetDate: Date | undefined;
+        weeklyResetDate: Date | undefined;
+    } {
+        let sessionPercent = 0;
+        let weeklyPercent = 0;
+        let sessionResetDate: Date | undefined;
+        let weeklyResetDate: Date | undefined;
+
+        /** 从 .local-time 元素提取时间（按顺序：第一个为 session，第二个为 weekly） */
+        const localTimeEls = $('.local-time');
+        if (localTimeEls.length >= 1) {
+            const time1 = localTimeEls.eq(0).attr('data-time');
+            if (time1) {
+                const parsed = new Date(time1);
+                if (!isNaN(parsed.getTime())) {
+                    sessionResetDate = parsed;
+                }
+            }
+        }
+        if (localTimeEls.length >= 2) {
+            const time2 = localTimeEls.eq(1).attr('data-time');
+            if (time2) {
+                const parsed = new Date(time2);
+                if (!isNaN(parsed.getTime())) {
+                    weeklyResetDate = parsed;
+                }
+            }
+        }
+
+        /** 从进度条 style width 提取百分比 */
+        const widthEls = $('[style*="width"]');
+        const widthPercentages: number[] = [];
+        widthEls.each((_index, el) => {
+            const style = $(el).attr('style') || '';
+            const widthMatch = style.match(/width:\s*(\d+(?:\.\d+)?)%/);
+            if (widthMatch) {
+                widthPercentages.push(parseFloat(widthMatch[1]));
+            }
+        });
+
+        /** 第一个百分比为 session，第二个为 weekly */
+        if (widthPercentages.length >= 1) {
+            sessionPercent = widthPercentages[0];
+        }
+        if (widthPercentages.length >= 2) {
+            weeklyPercent = widthPercentages[1];
+        }
+
+        return {
+            sessionPercent,
+            weeklyPercent,
+            sessionResetDate,
+            weeklyResetDate,
+        };
+    }
+
+    /**
+     * 解析 "Resets in X hours/days" 文本为 Date 对象
+     * @description 将页面中的相对时间文本转换为未来时间点
+     * @param text - 如 "Resets in 4 hours" 或 "Resets in 3 days"
+     * @returns 对应的未来 Date 对象，解析失败返回 undefined
+     */
+    private parseResetsInText(text: string): Date | undefined {
+        const now = new Date();
         let totalMs = 0;
 
-        /** 匹配天数 */
-        const daysMatch = timeStr.match(/(\d+)\s*d/);
+        /** 匹配天数：如 "3 days"、"1 day" */
+        const daysMatch = text.match(/(\d+)\s*day/i);
         if (daysMatch) {
             totalMs += parseInt(daysMatch[1]) * 24 * 60 * 60 * 1000;
         }
 
-        /** 匹配小时数 */
-        const hoursMatch = timeStr.match(/(\d+)\s*h/);
+        /** 匹配小时数：如 "4 hours"、"1 hour" */
+        const hoursMatch = text.match(/(\d+)\s*hour/i);
         if (hoursMatch) {
             totalMs += parseInt(hoursMatch[1]) * 60 * 60 * 1000;
         }
 
-        /** 匹配分钟数 */
-        const minutesMatch = timeStr.match(/(\d+)\s*m/);
+        /** 匹配分钟数：如 "30 minutes"、"1 minute" */
+        const minutesMatch = text.match(/(\d+)\s*minute/i);
         if (minutesMatch) {
             totalMs += parseInt(minutesMatch[1]) * 60 * 1000;
         }
 
-        /** 如果没有匹配到任何时间单位，默认返回基准时间 */
         if (totalMs === 0) {
-            return base;
+            return undefined;
         }
 
-        return new Date(base.getTime() + totalMs);
+        return new Date(now.getTime() + totalMs);
     }
 }

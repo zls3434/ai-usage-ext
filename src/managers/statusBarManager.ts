@@ -1,17 +1,18 @@
 /**
  * @fileoverview 状态栏管理器，负责在 VSCode 底部状态栏中展示用量信息
  * @date 2026-04-23
- * @author qiweizhe
- * @purpose 管理状态栏项的创建、更新、颜色和 Tooltip，以及右键菜单上下文
+ * @author zls3434
+ * @purpose 管理状态栏项的创建、更新、颜色和 Tooltip
+ * @modified 2026-04-23 - 将右键菜单改为左键点击显示自定义 QuickPick 菜单
  */
 
 import * as vscode from 'vscode';
-import { UsageResult, UsageStatus, formatResetTime, getUsageColorKey } from '../models/usageData';
+import { UsageResult, UsageStatus, formatResetTime } from '../models/usageData';
 
 /**
  * 状态栏管理器类
  * @description 负责状态栏 UI 元素的生命周期管理和数据显示
- *              包括状态栏文本、颜色编码、Hover Tooltip 等
+ *              左键点击状态栏项弹出 QuickPick 菜单，提供所有操作选项
  */
 export class StatusBarManager {
     /** VSCode 状态栏项 */
@@ -30,7 +31,8 @@ export class StatusBarManager {
             priority
         );
         this.statusBarItem.name = 'AI Usage Monitor';
-        this.statusBarItem.command = 'aiUsage.refreshNow';
+        /** 左键点击状态栏项弹出自定义菜单 */
+        this.statusBarItem.command = 'aiUsage.showMenu';
         this.showLoading();
         this.statusBarItem.show();
     }
@@ -53,7 +55,8 @@ export class StatusBarManager {
         this.statusBarItem.text = '$(key) Ollama: Login';
         this.statusBarItem.tooltip = 'AI Usage: Click to login to Ollama';
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-        this.statusBarItem.command = 'aiUsage.loginOllama';
+        /** 未设置 Cookie 时，左键点击直接弹出菜单（菜单中有登录选项） */
+        this.statusBarItem.command = 'aiUsage.showMenu';
     }
 
     /**
@@ -64,7 +67,7 @@ export class StatusBarManager {
         this.statusBarItem.text = '$(error) Ollama: Error';
         this.statusBarItem.tooltip = `AI Usage: ${message}`;
         this.statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-        this.statusBarItem.command = 'aiUsage.refreshNow';
+        this.statusBarItem.command = 'aiUsage.showMenu';
     }
 
     /**
@@ -111,8 +114,8 @@ export class StatusBarManager {
         const maxUsage = Math.max(sessionUsagePercent, weeklyUsagePercent);
         this.statusBarItem.backgroundColor = this.getUsageBackgroundColor(maxUsage);
 
-        /** 确保点击命令是刷新 */
-        this.statusBarItem.command = 'aiUsage.refreshNow';
+        /** 左键点击弹出菜单 */
+        this.statusBarItem.command = 'aiUsage.showMenu';
 
         /** 构建 Hover Tooltip */
         const lines: string[] = [
@@ -162,6 +165,14 @@ export class StatusBarManager {
      */
     getStatusBarItem(): vscode.StatusBarItem {
         return this.statusBarItem;
+    }
+
+    /**
+     * 获取上一次的用量数据
+     * @returns 上一次的用量结果，可能为 undefined
+     */
+    getLastResult(): UsageResult | undefined {
+        return this.lastResult;
     }
 
     /**

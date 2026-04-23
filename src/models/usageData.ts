@@ -1,7 +1,7 @@
 /**
  * @fileoverview AI Usage 数据模型定义
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 定义插件中使用的所有数据接口和类型，包括用量数据、配置数据等
  */
 

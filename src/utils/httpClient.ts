@@ -1,7 +1,7 @@
 /**
  * @fileoverview HTTP 客户端封装，用于请求 Ollama 平台页面
  * @date 2026-04-23
- * @author qiweizhe
+ * @author zls3434
  * @purpose 封装 HTTP 请求逻辑，支持 Cookie 认证、超时控制和安全限制
  */
 
