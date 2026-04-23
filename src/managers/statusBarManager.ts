@@ -105,10 +105,8 @@ export class StatusBarManager {
 
         const { sessionUsagePercent, weeklyUsagePercent, sessionResetDate, weeklyResetDate, lastUpdated } = result.data;
 
-        /** 构建状态栏文本 */
-        const sessionStr = `S:${sessionUsagePercent}%`;
-        const weeklyStr = `W:${weeklyUsagePercent}%`;
-        this.statusBarItem.text = `$(cloud) Ollama: ${sessionStr} ${weeklyStr}`;
+        /** 构建状态栏文本 — 使用空格和分隔符提高数字可读性 */
+        this.statusBarItem.text = `$(cloud) Ollama S: ${sessionUsagePercent}%  W: ${weeklyUsagePercent}%`;
 
         /** 根据用量级别设置颜色 */
         const maxUsage = Math.max(sessionUsagePercent, weeklyUsagePercent);

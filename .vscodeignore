@@ -10,3 +10,4 @@ tasks.md
 checklist.md
 refer-files/**
 test-*.js
+build.sh
