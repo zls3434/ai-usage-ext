@@ -73,7 +73,9 @@ Ollama 云平台对每个用户有 session limits（每5小时重置）和 weekl
 ### 2.3 数据流
 
 ```
-用户登录 ollama.com → 手动复制 cookies → 粘贴到插件配置
+用户点击"登录 Ollama" → WebView 加载 ollama.com 登录页 → 用户手动登录
+                                                    ↓
+WebView 内登录成功 → 自动检测 Cookie 变化 → 提取并存储 Cookie
                                                     ↓
 定时器触发 → OllamaProvider.fetchUsage() → HTTPS 请求 ollama.com/settings
                                                     ↓
@@ -84,21 +86,29 @@ Ollama 云平台对每个用户有 session limits（每5小时重置）和 weekl
 
 ### 3.1 Cookie 管理
 
-#### 3.1.1 Cookie 输入
+#### 3.1.1 Cookie 获取方式
 
-- **方式**: 用户手动从浏览器复制 Cookie 并粘贴到插件设置中
-- **理由**: VSCode 扩展无法直接操作浏览器登录界面，手动方式最稳定可靠
-- **配置入口**:
-  - 命令面板输入 `AI Usage: Set Ollama Cookie`
-  - 右键状态栏菜单选择 "设置 Cookie"
-- **存储**: 使用 `globalState` 持久化存储，加密敏感信息
-- **Cookie 字段**: 需要完整的 `cookie` 字符串（从浏览器 DevTools 中复制）
+- **方式**: 在 VSCode/Trae CN 中打开 WebView，加载 Ollama 登录页面
+- **流程**:
+  1. 用户通过命令面板或右键菜单触发"登录 Ollama"命令
+  2. 插件在编辑器中创建 WebView Panel，加载 `https://ollama.com/signin` 页面
+  3. 用户在 WebView 中手动完成登录操作（如 GitHub OAuth 登录）
+  4. WebView 内页面导航到登录成功页面后，通过 JavaScript 注入检测 Cookie 变化
+  5. 自动提取 Cookie 并存储到 `globalState`
+  6. 关闭 WebView，提示登录成功
+- **技术实现**:
+  - 使用 `vscode.window.createWebviewPanel` 创建 WebView
+  - WebView 启用 `enableScripts` 配置以注入 JS 脚本
+  - 使用 `onDidReceiveMessage` 监听 WebView 返回的 Cookie 数据
+  - 通过 WebView 的 `webview.html` 中注入的脚本检测 `document.cookie` 变化
+  - 由于跨域 Cookie 限制，可能需要使用 `webview` 的 `onDidNavigate` 事件来捕获重定向 URL 中的认证信息
+- **备选方案**: 如果 WebView 方式因安全限制无法获取 Cookie，提供手动输入 Cookie 的回退方式
 
 #### 3.1.2 Cookie 有效性验证
 
 - 设置 Cookie 后立即发起一次请求验证
 - 如果验证失败，在状态栏显示警告图标
-- Cookie 过期时自动提示用户更新
+- Cookie 过期时自动提示用户重新登录
 
 ### 3.2 用量数据获取
 
@@ -165,11 +175,13 @@ Last updated: 14:30:00
 
 右键状态栏插件区域，弹出菜单包含：
 
-1. **开启/关闭自动更新** - 切换定时获取开关
-2. **修改更新频率** - 可选：30s / 1min / 2min / 5min / 10min
-3. **设置 Cookie** - 打开 Cookie 输入框
-4. **立即刷新** - 手动触发一次刷新
-5. **打开 Ollama 设置页** - 在浏览器中打开 ollama.com/settings
+1. **登录 Ollama** - 打开 WebView 登录页面，自动获取 Cookie
+2. **手动设置 Cookie** - 手动输入 Cookie（备选方式）
+3. **清除 Cookie** - 清除已保存的 Cookie
+4. **开启/关闭自动更新** - 切换定时获取开关
+5. **修改更新频率** - 可选：30s / 1min / 2min / 5min / 10min
+6. **立即刷新** - 手动触发一次刷新
+7. **打开 Ollama 设置页** - 在浏览器中打开 ollama.com/settings
 
 ### 3.5 定时更新
 
@@ -199,9 +211,11 @@ ai-usage-ext/
 │   ├── providers/
 │   │   └── ollamaProvider.ts       # Ollama 数据获取和解析
 │   ├── managers/
-│   │   ├── cookieManager.ts        # Cookie 存储和检索
+│   │   ├── cookieManager.ts        # Cookie 存储、检索和 WebView 登录
 │   │   ├── configManager.ts        # 配置管理（更新频率、开关等）
 │   │   └── statusBarManager.ts    # 状态栏 UI 管理
+│   ├── webview/
+│   │   └── loginPanel.ts           # WebView 登录面板，加载 Ollama 登录页并提取 Cookie
 │   ├── models/
 │   │   └── usageData.ts           # 用量数据模型定义
 │   └── utils/
@@ -227,11 +241,6 @@ ai-usage-ext/
     "type": "boolean",
     "default": true,
     "description": "是否开启自动更新"
-  },
-  "aiUsage.ollamaCookie": {
-    "type": "string",
-    "default": "",
-    "description": "Ollama 平台的 Cookie（从浏览器复制）"
   }
 }
 ```
@@ -241,7 +250,9 @@ ai-usage-ext/
 ```json
 {
   "commands": [
-    { "command": "aiUsage.setCookie", "title": "AI Usage: Set Ollama Cookie" },
+    { "command": "aiUsage.loginOllama", "title": "AI Usage: Login Ollama" },
+    { "command": "aiUsage.setCookie", "title": "AI Usage: Set Ollama Cookie (Manual)" },
+    { "command": "aiUsage.clearCookie", "title": "AI Usage: Clear Ollama Cookie" },
     { "command": "aiUsage.toggleAutoUpdate", "title": "AI Usage: Toggle Auto Update" },
     { "command": "aiUsage.setUpdateInterval", "title": "AI Usage: Set Update Interval" },
     { "command": "aiUsage.refreshNow", "title": "AI Usage: Refresh Now" },
