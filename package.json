@@ -1,0 +1,120 @@
+{
+  "name": "ai-usage-ext",
+  "displayName": "AI Usage Monitor",
+  "description": "Monitor cloud AI platform API usage in status bar. Currently supports Ollama.",
+  "version": "0.1.0",
+  "publisher": "qiweizhe",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiUsage.loginOllama",
+        "title": "AI Usage: Login Ollama"
+      },
+      {
+        "command": "aiUsage.setCookie",
+        "title": "AI Usage: Set Ollama Cookie (Manual)"
+      },
+      {
+        "command": "aiUsage.clearCookie",
+        "title": "AI Usage: Clear Ollama Cookie"
+      },
+      {
+        "command": "aiUsage.toggleAutoUpdate",
+        "title": "AI Usage: Toggle Auto Update"
+      },
+      {
+        "command": "aiUsage.setUpdateInterval",
+        "title": "AI Usage: Set Update Interval"
+      },
+      {
+        "command": "aiUsage.refreshNow",
+        "title": "AI Usage: Refresh Now"
+      },
+      {
+        "command": "aiUsage.openSettings",
+        "title": "AI Usage: Open Ollama Settings"
+      }
+    ],
+    "configuration": {
+      "title": "AI Usage Monitor",
+      "properties": {
+        "aiUsage.updateInterval": {
+          "type": "number",
+          "default": 60,
+          "enum": [
+            30,
+            60,
+            120,
+            300,
+            600
+          ],
+          "description": "Auto update interval in seconds"
+        },
+        "aiUsage.autoUpdate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable auto update"
+        }
+      }
+    },
+    "menus": {
+      "statusBar/context": [
+        {
+          "command": "aiUsage.loginOllama",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.setCookie",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.clearCookie",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.toggleAutoUpdate",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.setUpdateInterval",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.refreshNow",
+          "when": "aiUsageStatusBarItem"
+        },
+        {
+          "command": "aiUsage.openSettings",
+          "when": "aiUsageStatusBarItem"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=node18 --watch",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0"
+  }
+}
