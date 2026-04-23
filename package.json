@@ -4,6 +4,10 @@
   "description": "Monitor cloud AI platform API usage in status bar. Currently supports Ollama.",
   "version": "0.1.0",
   "publisher": "zls3434",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zls3434/ai-usage-ext.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
