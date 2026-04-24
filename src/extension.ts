@@ -1,5 +1,5 @@
 /**
- * @fileoverview AI Usage Monitor 扩展入口文件
+ * @fileoverview AI Usage Extension 扩展入口文件
  * @date 2026-04-23
  * @author zls3434
  * @purpose VSCode/Trae CN 扩展插件入口，负责插件的激活和停用生命周期管理
@@ -25,7 +25,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     /** 启动扩展 */
     await controller.start();
 
-    console.log('AI Usage Monitor extension activated.');
+    console.log('AI Usage Extension extension activated.');
 }
 
 /**
@@ -34,5 +34,5 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
  *              清理资源（主要逻辑通过 context.subscriptions 处理）
  */
 export function deactivate(): void {
-    console.log('AI Usage Monitor extension deactivated.');
+    console.log('AI Usage Extension extension deactivated.');
 }

@@ -3,6 +3,7 @@
  * @date 2026-04-23
  * @author zls3434
  * @purpose 作为插件核心协调器，管理定时器、命令注册、状态栏更新和数据获取的完整流程
+ * @modified 2026-04-23 - 插件名从 AI Usage Monitor 改为 AI Usage Extension
  * @modified 2026-04-23 - 状态栏左键点击改为弹出 QuickPick 菜单，移除右键菜单方案
  */
 
@@ -205,7 +206,7 @@ export class ExtensionController {
         });
 
         const selected = await vscode.window.showQuickPick(items, {
-            title: '🦙 AI Usage Monitor — Ollama',
+            title: '🦙 AI Usage Extension — Ollama',
             placeHolder: 'Select an action...',
         });
 

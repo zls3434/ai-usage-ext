@@ -1,9 +1,10 @@
 {
   "name": "ai-usage-ext",
-  "displayName": "AI Usage Monitor",
+  "displayName": "AI Usage Extension",
   "description": "Monitor cloud AI platform API usage in status bar. Currently supports Ollama.",
   "version": "0.1.0",
   "publisher": "zls3434",
+  "icon": "logo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/zls3434/ai-usage-ext.git"
@@ -54,7 +55,7 @@
       }
     ],
     "configuration": {
-      "title": "AI Usage Monitor",
+      "title": "AI Usage Extension",
       "properties": {
         "aiUsage.updateInterval": {
           "type": "number",
