@@ -3,6 +3,7 @@
  * @date 2026-04-23
  * @author zls3434
  * @purpose 管理状态栏项的创建、更新、颜色和 Tooltip
+ * @modified 2026-04-23 - 插件名从 AI Usage Monitor 改为 AI Usage Extension
  * @modified 2026-04-23 - 将右键菜单改为左键点击显示自定义 QuickPick 菜单
  */
 
@@ -30,7 +31,7 @@ export class StatusBarManager {
             vscode.StatusBarAlignment.Left,
             priority
         );
-        this.statusBarItem.name = 'AI Usage Monitor';
+        this.statusBarItem.name = 'AI Usage Extension';
         /** 左键点击状态栏项弹出自定义菜单 */
         this.statusBarItem.command = 'aiUsage.showMenu';
         this.showLoading();

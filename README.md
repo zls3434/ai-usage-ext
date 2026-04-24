@@ -1,6 +1,6 @@
 **English** | [中文](./README_CN.md)
 
-# 🦙 AI Usage Monitor
+# 🦙 AI Usage Extension
 
 > Monitor cloud AI platform API usage directly in your VSCode/Trae CN status bar. Currently supports **Ollama**.
 

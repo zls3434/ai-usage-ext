@@ -1,6 +1,6 @@
 [English](./README.md) | **中文**
 
-# 🦙 AI Usage Monitor
+# 🦙 AI Usage Extension
 
 > 在 VSCode/Trae CN 状态栏中实时监控云端 AI 平台 API 用量。当前支持 **Ollama**。
 
