@@ -11,3 +11,10 @@ checklist.md
 refer-files/**
 test-*.js
 build.sh
+design-philosophy.md
+generate-logo*.js
+generate-logo*.py
+create-logo.html
+logo-final.svg
+logo.svg
+*.vsix
