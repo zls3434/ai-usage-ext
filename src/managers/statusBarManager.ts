@@ -5,18 +5,18 @@
  * @purpose 管理状态栏项的创建、更新、颜色和 Tooltip
  * @modified 2026-04-23 - 插件名从 AI Usage Monitor 改为 AI Usage Extension
  * @modified 2026-04-23 - 将右键菜单改为左键点击显示自定义 QuickPick 菜单
- * @modified 2026-04-28 - qiweizhe - 将单一状态栏项拆分为3个状态栏项（标签/Session/Weekly），
+ * @modified 2026-04-28 - zls3434 - 将单一状态栏项拆分为3个状态栏项（标签/Session/Weekly），
  *              实现分别在对应数据段独立显示颜色预警（Session和Weekly各自根据自身用量百分比着色）
- * @modified 2026-04-28 - qiweizhe - 优化 Tooltip 行为：仅标签项显示完整 Tooltip，
+ * @modified 2026-04-28 - zls3434 - 优化 Tooltip 行为：仅标签项显示完整 Tooltip，
  *              Session 和 Weekly 项不设 Tooltip（设为 undefined），避免鼠标在3个 item 之间移动时
  *              Tooltip 反复关闭/打开造成闪烁；
  *              使用 MarkdownString 代替纯文本，利用 VSCode rich hover 机制使 Tooltip 更稳定显示；
  *              将标签项文本扩展为包含用量信息的完整格式，使 Tooltip 区域覆盖更宽
- * @modified 2026-04-28 - qiweizhe - 调整用量告警颜色阈值：Session 保持原阈值（50%/80%），
+ * @modified 2026-04-28 - zls3434 - 调整用量告警颜色阈值：Session 保持原阈值（50%/80%），
  *              Weekly 使用新阈值（75%/90%），<75% 正常，75%-90% 黄色警告，>90% 红色危险；
  *              将统一阈值常量拆分为 Session 和 Weekly 独立阈值常量，
  *              背景颜色和 Tooltip 预警标识分别使用对应阈值判断
- * @modified 2026-04-28 - qiweizhe - 将 UsageType 枚举和阈值常量统一提取到 usageData.ts，
+ * @modified 2026-04-28 - zls3434 - 将 UsageType 枚举和阈值常量统一提取到 usageData.ts，
  *              消除重复定义；将 getUsageColorKey 的 type 参数从字符串字面量改为 UsageType 枚举
  */
 
@@ -360,6 +360,8 @@ export class StatusBarManager {
                     warningThreshold: WEEKLY_WARNING_THRESHOLD,
                     errorThreshold: WEEKLY_ERROR_THRESHOLD
                 };
+            default:
+                throw new Error(`Unknown usage type: ${type}`);
         }
     }
 

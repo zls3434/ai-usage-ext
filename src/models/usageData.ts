@@ -3,11 +3,11 @@
  * @date 2026-04-23
  * @author zls3434
  * @purpose 定义插件中使用的所有数据接口和类型，包括用量数据、配置数据、告警阈值常量等
- * @modified 2026-04-28 - qiweizhe - 更新 getUsageColorKey 函数，支持 Session 和 Weekly 使用不同阈值
- * @modified 2026-04-28 - qiweizhe - 将告警阈值常量提取为模块级导出常量，
+ * @modified 2026-04-28 - zls3434 - 更新 getUsageColorKey 函数，支持 Session 和 Weekly 使用不同阈值
+ * @modified 2026-04-28 - zls3434 - 将告警阈值常量提取为模块级导出常量，
  *              统一管理 Session（50%/80%）和 Weekly（75%/90%）的告警阈值，
  *              消除与 StatusBarManager 中的重复定义
- * @modified 2026-04-28 - qiweizhe - 新增 UsageType 枚举并导出，替代 getUsageColorKey 中的字符串字面量类型，
+ * @modified 2026-04-28 - zls3434 - 新增 UsageType 枚举并导出，替代 getUsageColorKey 中的字符串字面量类型，
  *              统一用量类型的表示方式，与 StatusBarManager 中的 UsageType 保持一致
  */
 
