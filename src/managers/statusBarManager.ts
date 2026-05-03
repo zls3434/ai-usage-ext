@@ -12,23 +12,40 @@
  *              Tooltip 反复关闭/打开造成闪烁；
  *              使用 MarkdownString 代替纯文本，利用 VSCode rich hover 机制使 Tooltip 更稳定显示；
  *              将标签项文本扩展为包含用量信息的完整格式，使 Tooltip 区域覆盖更宽
+ * @modified 2026-04-28 - qiweizhe - 调整用量告警颜色阈值：Session 保持原阈值（50%/80%），
+ *              Weekly 使用新阈值（75%/90%），<75% 正常，75%-90% 黄色警告，>90% 红色危险；
+ *              将统一阈值常量拆分为 Session 和 Weekly 独立阈值常量，
+ *              背景颜色和 Tooltip 预警标识分别使用对应阈值判断
+ * @modified 2026-04-28 - qiweizhe - 将 UsageType 枚举和阈值常量统一提取到 usageData.ts，
+ *              消除重复定义；将 getUsageColorKey 的 type 参数从字符串字面量改为 UsageType 枚举
  */
 
 import * as vscode from 'vscode';
-import { UsageResult, UsageStatus, formatResetTime } from '../models/usageData';
+import {
+    UsageResult,
+    UsageStatus,
+    formatResetTime,
+    UsageType,
+    SESSION_WARNING_THRESHOLD,
+    SESSION_ERROR_THRESHOLD,
+    WEEKLY_WARNING_THRESHOLD,
+    WEEKLY_ERROR_THRESHOLD
+} from '../models/usageData';
 
 /**
  * 状态栏管理器类
  * @description 负责状态栏 UI 元素的生命周期管理和数据显示
  *              使用3个独立状态栏项分别展示标签、Session用量、Weekly用量，
- *              使Session和Weekly可以各自显示独立的颜色预警（黄色≥50%，红色≥80%）
+ *              使Session和Weekly可以各自显示独立的颜色预警
+ *              Session 告警阈值：<50% 正常，50%-80% 黄色警告，≥80% 红色危险
+ *              Weekly 告警阈值：<75% 正常，75%-90% 黄色警告，≥90% 红色危险
  *              Tooltip 策略：仅标签项(labelItem)显示完整 MarkdownString Tooltip，
  *              Session和Weekly项不设Tooltip，避免在item之间移动时Tooltip闪烁
  *              左键点击任意状态栏项弹出 QuickPick 菜单，提供所有操作选项
  */
 export class StatusBarManager {
     /**
-     * 标签状态栏项 — 显示 "$(cloud) Ollama S:xx% W:yy%" 图标、名称和用量概要
+     * 标签状态栏项 — 显示 "$(cloud) Ollama" 图标和名称
      * 拥有完整的 MarkdownString Tooltip，是本插件主要的 Tooltip 显示区域
      * 在非正常状态下（Loading/NoCookie/Error），该状态栏项承载全部显示内容
      * 不显示颜色预警背景色，保持标签项中性
@@ -39,7 +56,7 @@ export class StatusBarManager {
      * Session 用量状态栏项 — 仅在正常状态下可见，显示 "S: xx%"
      * 背景颜色根据 Session 用量百分比独立设置：
      * - < 50%: 默认颜色（无背景色）
-     * - >= 50%: 黄色警告背景（statusBarItem.warningBackground）
+     * - >= 50% 且 < 80%: 黄色警告背景（statusBarItem.warningBackground）
      * - >= 80%: 红色危险背景（statusBarItem.errorBackground）
      * 不设置 Tooltip（undefined），避免鼠标移到此项时触发新的 Tooltip
      * 导致与 labelItem 的 Tooltip 产生闪烁冲突
@@ -48,21 +65,16 @@ export class StatusBarManager {
 
     /**
      * Weekly 用量状态栏项 — 仅在正常状态下可见，显示 "W: yy%"
-     * 背景颜色根据 Weekly 用量百分比独立设置（阈值同 sessionItem）
+     * 背景颜色根据 Weekly 用量百分比独立设置：
+     * - < 75%: 默认颜色（无背景色）
+     * - >= 75% 且 < 90%: 黄色警告背景（statusBarItem.warningBackground）
+     * - >= 90%: 红色危险背景（statusBarItem.errorBackground）
      * 不设置 Tooltip（undefined），原因同 sessionItem
      */
     private weeklyItem: vscode.StatusBarItem;
 
     /** 上一次的用量数据，用于 Tooltip 显示和状态判断 */
     private lastResult: UsageResult | undefined;
-
-    /**
-     * 用量百分比阈值常量 — 用于颜色预警判断
-     * @description WARNING_THRESHOLD = 50 表示用量达到50%时显示黄色警告
-     *             ERROR_THRESHOLD = 80 表示用量达到80%时显示红色危险
-     */
-    private static readonly WARNING_THRESHOLD = 50;
-    private static readonly ERROR_THRESHOLD = 80;
 
     /**
      * 创建状态栏管理器
@@ -181,8 +193,8 @@ export class StatusBarManager {
      * @param result - 包含有效用量数据的结果
      * @description 将标签、Session、Weekly分别显示在独立状态栏项中，
      *              Session和Weekly各自根据自身百分比独立显示颜色预警：
-     *              - Session >= 80% → 红色背景；>= 50% → 黄色背景；< 50% → 默认
-     *              - Weekly >= 80% → 红色背景；>= 50% → 黄色背景；< 50% → 默认
+     *              - Session: >= 80% → 红色背景；>= 50% → 黄色背景；< 50% → 默认
+     *              - Weekly:  >= 90% → 红色背景；>= 75% → 黄色背景；< 75% → 默认
      *              Tooltip 仅设置在标签项上，避免3个item之间Tooltip闪烁
      */
     private updateNormalDisplay(result: UsageResult): void {
@@ -193,22 +205,17 @@ export class StatusBarManager {
 
         const { sessionUsagePercent, weeklyUsagePercent, sessionResetDate, weeklyResetDate, lastUpdated } = result.data;
 
-        /**
-         * 标签项：显示图标、名称和用量概要
-         * 文本格式为 "$(cloud) Ollama S:xx% W:yy%"，这样标签项覆盖更宽的区域，
-         * 用户鼠标在标签项范围内移动时 Tooltip 不会消失，
-         * 只有鼠标移到 Session/Weekly 项上时 Tooltip 才会消失
-         */
+        /** 标签项：显示图标和名称，不设背景色 */
         this.labelItem.text = `$(cloud) Ollama`;
         this.labelItem.backgroundColor = undefined;
 
-        /** Session 项：显示 Session 用量百分比，独立设置颜色预警 */
+        /** Session 项：使用 Session 专用阈值（50%/80%）设置颜色预警 */
         this.sessionItem.text = `S: ${sessionUsagePercent}%`;
-        this.sessionItem.backgroundColor = this.getUsageBackgroundColor(sessionUsagePercent);
+        this.sessionItem.backgroundColor = this.getUsageBackgroundColor(sessionUsagePercent, UsageType.Session);
 
-        /** Weekly 项：显示 Weekly 用量百分比，独立设置颜色预警 */
+        /** Weekly 项：使用 Weekly 专用阈值（75%/90%）设置颜色预警 */
         this.weeklyItem.text = `W: ${weeklyUsagePercent}%`;
-        this.weeklyItem.backgroundColor = this.getUsageBackgroundColor(weeklyUsagePercent);
+        this.weeklyItem.backgroundColor = this.getUsageBackgroundColor(weeklyUsagePercent, UsageType.Weekly);
 
         /** 显示所有状态栏项 */
         this.labelItem.show();
@@ -223,10 +230,6 @@ export class StatusBarManager {
          * 旧 Tooltip 关闭、新 Tooltip 打开，产生闪烁；
          * 仅标签项设 Tooltip 时，鼠标移到 Session/Weekly 项 Tooltip 自然消失，
          * 但不会触发新的 Tooltip 弹出，用户体验更平滑
-         *
-         * 使用 MarkdownString 代替纯文本 string，利用 VSCode 的 rich hover 机制：
-         * MarkdownString tooltip 的消失延迟比纯文本长，使 Tooltip 更稳定，
-         * 鼠标快速经过 Session/Weekly 时 MarkdownString Tooltip 可能还未消失
          */
         this.labelItem.tooltip = this.buildTooltipMarkdown(
             sessionUsagePercent, weeklyUsagePercent,
@@ -244,9 +247,9 @@ export class StatusBarManager {
      * @returns MarkdownString 对象，支持 VSCode rich hover 渲染
      * @description 使用 Markdown 格式构建 Tooltip 内容，包括：
      *              - 标题行
-     *              - Session 用量百分比及预警标识（⚠ WARNING / ⚠ CRITICAL）
+     *              - Session 用量百分比及预警标识（Session 阈值：50%/80%）
      *              - Session 重置倒计时
-     *              - Weekly 用量百分比及预警标识
+     *              - Weekly 用量百分比及预警标识（Weekly 阈值：75%/90%）
      *              - Weekly 重置倒计时
      *              - 最后更新时间
      *              MarkdownString 的 isTrusted = true 允许渲染命令链接
@@ -266,16 +269,22 @@ export class StatusBarManager {
         /** 添加标题行 */
         md.appendMarkdown('**$(cloud) Ollama Cloud Usage**\n\n---\n\n');
 
-        /** 添加 Session 用量信息及颜色预警标识 */
-        const sessionWarning = this.getUsageMdLabel(sessionUsagePercent);
+        /**
+         * 添加 Session 用量信息及颜色预警标识
+         * Session 使用独立阈值：>= 80% CRITICAL，>= 50% WARNING
+         */
+        const sessionWarning = this.getUsageMdLabel(sessionUsagePercent, UsageType.Session);
         md.appendMarkdown(`**Session (5h):** ${sessionUsagePercent}% used${sessionWarning}\n\n`);
         if (sessionResetDate) {
             const remaining = sessionResetDate.getTime() - Date.now();
             md.appendMarkdown(`&nbsp;&nbsp;↻ Reset in: ${formatResetTime(remaining)}\n\n`);
         }
 
-        /** 添加 Weekly 用量信息及颜色预警标识 */
-        const weeklyWarning = this.getUsageMdLabel(weeklyUsagePercent);
+        /**
+         * 添加 Weekly 用量信息及颜色预警标识
+         * Weekly 使用独立阈值：>= 90% CRITICAL，>= 75% WARNING
+         */
+        const weeklyWarning = this.getUsageMdLabel(weeklyUsagePercent, UsageType.Weekly);
         md.appendMarkdown(`**Weekly:** ${weeklyUsagePercent}% used${weeklyWarning}\n\n`);
         if (weeklyResetDate) {
             const remaining = weeklyResetDate.getTime() - Date.now();
@@ -291,41 +300,67 @@ export class StatusBarManager {
     }
 
     /**
-     * 根据用量百分比获取 Markdown 格式的预警标识
+     * 根据用量百分比和用量类型获取 Markdown 格式的预警标识
      * @param percent - 用量百分比（0-100）
+     * @param type - 用量类型（Session 或 Weekly），用于选择对应的告警阈值
      * @returns Markdown 格式的预警标识字符串，用于 MarkdownString Tooltip
-     * @description 返回带加粗样式的预警标识：
-     *              - >= 80%: "⚠ **CRITICAL**" 红色危险级别
-     *              - >= 50%: "⚠ *WARNING*" 黄色警告级别
-     *              - < 50%: 空字符串（正常，无需预警）
+     * @description 根据用量类型选择不同阈值返回预警标识：
+     *              Session: >= 80% → "⚠ **CRITICAL**"，>= 50% → "⚠ *WARNING*"
+     *              Weekly:  >= 90% → "⚠ **CRITICAL**"，>= 75% → "⚠ *WARNING*"
+     *              正常时返回空字符串
      */
-    private getUsageMdLabel(percent: number): string {
-        if (percent >= StatusBarManager.ERROR_THRESHOLD) {
+    private getUsageMdLabel(percent: number, type: UsageType): string {
+        const { warningThreshold, errorThreshold } = this.getThresholds(type);
+        if (percent >= errorThreshold) {
             return ' ⚠ **CRITICAL**';
         }
-        if (percent >= StatusBarManager.WARNING_THRESHOLD) {
+        if (percent >= warningThreshold) {
             return ' ⚠ *WARNING*';
         }
         return '';
     }
 
     /**
-     * 根据用量百分比获取背景颜色
+     * 根据用量百分比和用量类型获取背景颜色
      * @param percent - 用量百分比（0-100）
+     * @param type - 用量类型（Session 或 Weekly），用于选择对应的告警阈值
      * @returns VSCode 主题颜色或 undefined（正常状态无背景色）
-     * @description 阈值逻辑：
-     *              - percent >= 80: 返回 statusBarItem.errorBackground（红色危险背景）
-     *              - percent >= 50: 返回 statusBarItem.warningBackground（黄色警告背景）
-     *              - percent < 50:  返回 undefined（默认背景色，无预警）
+     * @description 根据用量类型选择不同阈值判断背景颜色：
+     *              Session: >= 80% → errorBackground，>= 50% → warningBackground，< 50% → 默认
+     *              Weekly:  >= 90% → errorBackground，>= 75% → warningBackground，< 75% → 默认
      */
-    private getUsageBackgroundColor(percent: number): vscode.ThemeColor | undefined {
-        if (percent >= StatusBarManager.ERROR_THRESHOLD) {
+    private getUsageBackgroundColor(percent: number, type: UsageType): vscode.ThemeColor | undefined {
+        const { warningThreshold, errorThreshold } = this.getThresholds(type);
+        if (percent >= errorThreshold) {
             return new vscode.ThemeColor('statusBarItem.errorBackground');
         }
-        if (percent >= StatusBarManager.WARNING_THRESHOLD) {
+        if (percent >= warningThreshold) {
             return new vscode.ThemeColor('statusBarItem.warningBackground');
         }
         return undefined;
+    }
+
+    /**
+     * 根据用量类型获取对应的告警阈值
+     * @param type - 用量类型（Session 或 Weekly）
+     * @returns 包含 warningThreshold 和 errorThreshold 的对象
+     * @description 从 usageData 模块导入的统一常量获取阈值：
+     *              - Session: warningThreshold = SESSION_WARNING_THRESHOLD(50), errorThreshold = SESSION_ERROR_THRESHOLD(80)
+     *              - Weekly:  warningThreshold = WEEKLY_WARNING_THRESHOLD(75), errorThreshold = WEEKLY_ERROR_THRESHOLD(90)
+     */
+    private getThresholds(type: UsageType): { warningThreshold: number; errorThreshold: number } {
+        switch (type) {
+            case UsageType.Session:
+                return {
+                    warningThreshold: SESSION_WARNING_THRESHOLD,
+                    errorThreshold: SESSION_ERROR_THRESHOLD
+                };
+            case UsageType.Weekly:
+                return {
+                    warningThreshold: WEEKLY_WARNING_THRESHOLD,
+                    errorThreshold: WEEKLY_ERROR_THRESHOLD
+                };
+        }
     }
 
     /**
