@@ -7,8 +7,8 @@
 ## ✨ Features
 
 - **Real-time Usage Monitoring** — Display Ollama session (5h) and weekly usage percentages in the status bar
-- **Color-coded Alerts** — Visual warnings: normal (<50%), yellow warning (50-80%), red alert (>80%)
-- **Hover Tooltip** — Detailed usage info including reset countdown on mouse hover
+- **Color-coded Alerts** — Independent color warnings for each usage type: Session (<50% normal, 50-80% yellow, ≥80% red) and Weekly (<75% normal, 75-90% yellow, ≥90% red)
+- **Hover Tooltip** — Detailed usage info including reset countdown on mouse hover over the label item
 - **QuickPick Menu** — Left-click the status bar item to access all actions via a convenient menu
 - **Auto & Manual Refresh** — Configurable auto-update intervals (30s, 1min, 2min, 5min, 10min) or manual refresh
 - **Ollama Login** — Built-in WebView login panel with step-by-step cookie extraction guide
@@ -19,24 +19,37 @@
 
 ### Status Bar Display
 
+The status bar consists of three independent items, each with its own color alert:
+
 ```
-$(cloud) Ollama S: 45%  W: 30%
+$(cloud) Ollama    S: 45%    W: 30%
 ```
 
-- **S: xx%** — Current 5-hour session usage percentage
-- **W: yy%** — Current weekly usage percentage
+- **$(cloud) Ollama** — Label item (no color alert, shows full tooltip on hover)
+- **S: xx%** — Current 5-hour session usage percentage with independent color alert
+- **W: yy%** — Current weekly usage percentage with independent color alert
+
+### Color-coded Alerts
+
+| Usage Level | Session Threshold | Weekly Threshold | Status Bar Background |
+|-------------|-------------------|------------------|-----------------------|
+| Normal | < 50% | < 75% | Default (no highlight) |
+| Warning | 50% ~ 79% | 75% ~ 89% | Yellow (`statusBarItem.warningBackground`) |
+| Critical | ≥ 80% | ≥ 90% | Red (`statusBarItem.errorBackground`) |
 
 ### Hover Tooltip
 
-```
-Ollama Cloud Usage
-────────────────────
-Session (5h): 45% used
-  Reset in: 2h 30m
+Hover over the **label item** (`$(cloud) Ollama`) to see detailed Markdown-formatted usage info:
 
-Weekly: 30% used
-  Reset in: 3d 12h
-────────────────────
+```
+☁ Ollama Cloud Usage
+──────────────────────
+Session (5h): 45% used
+  ↻ Reset in: 2h 30m
+
+Weekly: 78% used ⚠ WARNING
+  ↻ Reset in: 3d 12h
+──────────────────────
 Last updated: 14:30:00
 ```
 
@@ -155,10 +168,10 @@ ai-usage-ext/
 | **OllamaProvider** | Fetches `ollama.com/settings` HTML, parses session/weekly usage & reset times via cheerio |
 | **CookieManager** | Persists cookies in `globalState`, provides change notifications |
 | **ConfigManager** | Reads/writes VSCode settings, fires config change callbacks |
-| **StatusBarManager** | Renders usage data in the status bar with color-coded alerts and hover tooltips |
+| **StatusBarManager** | Renders usage data in 3 independent status bar items (label/session/weekly) with separate color-coded alerts and a shared Markdown tooltip |
 | **LoginPanel** | WebView panel guiding users through Ollama login and cookie extraction |
 | **HttpClient** | Axios-based HTTP client with cookie auth, timeout control, and error classification |
-| **UsageData** | Type definitions (`UsageData`, `UsageResult`, `UsageStatus`) and utility functions |
+| **UsageData** | Type definitions (`UsageData`, `UsageResult`, `UsageStatus`), `UsageType` enum, alert threshold constants, and utility functions |
 
 ### Data Flow
 
@@ -185,14 +198,17 @@ ai-usage-ext/
 └──────┬─────┘  └──────────────┘
        │
        ▼
-┌────────────────┐
-│ Status Bar      │
-│ Manager         │
-│                 │
-│ updates display │
-│ with colors,    │
-│ tooltips, etc.  │
-└────────────────┘
+┌──────────────────────────────┐
+│ Status Bar Manager            │
+│                               │
+│ ┌──────────┬───────┬───────┐ │
+│ │ Label    │ S:xx% │ W:yy% │ │
+│ │ (tooltip)│ (color)│(color)│ │
+│ └──────────┴───────┴───────┘ │
+│                               │
+│ 3 items with independent     │
+│ color alerts per usage type  │
+└──────────────────────────────┘
 ```
 
 ## 🔧 Development

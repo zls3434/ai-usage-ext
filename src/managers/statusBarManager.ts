@@ -361,7 +361,7 @@ export class StatusBarManager {
                     errorThreshold: WEEKLY_ERROR_THRESHOLD
                 };
             default:
-                throw new Error(`Unknown usage type: ${type}`);
+                throw new Error(`Unknown usage type: ${type} (expected UsageType.Session or UsageType.Weekly)`);
         }
     }
 
