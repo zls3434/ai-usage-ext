@@ -7,8 +7,8 @@
 ## ✨ 功能特性
 
 - **实时用量监控** — 在状态栏中显示 Ollama 会话（5小时）和周用量的百分比
-- **颜色编码告警** — 视觉警告：正常（<50%）、黄色警告（50-80%）、红色告警（>80%）
-- **悬停提示框** — 鼠标悬停查看详细用量信息和重置倒计时
+- **颜色编码告警** — Session 和 Weekly 独立颜色预警：Session（<50% 正常，50-80% 黄色，≥80% 红色）、Weekly（<75% 正常，75-90% 黄色，≥90% 红色）
+- **悬停提示框** — 鼠标悬停标签项查看详细用量信息和重置倒计时
 - **QuickPick 菜单** — 左键点击状态栏图标即可弹出操作菜单，方便快捷
 - **自动/手动刷新** — 可配置自动更新间隔（30秒/1分钟/2分钟/5分钟/10分钟），也支持手动刷新
 - **Ollama 登录** — 内置 WebView 登录面板，提供分步 Cookie 提取指引
@@ -19,24 +19,37 @@
 
 ### 状态栏显示
 
+状态栏由三个独立的状态栏项组成，各自拥有独立的颜色预警：
+
 ```
-$(cloud) Ollama S: 45%  W: 30%
+$(cloud) Ollama    S: 45%    W: 30%
 ```
 
-- **S: xx%** — 当前 5 小时会话用量百分比
-- **W: yy%** — 当周用量百分比
+- **$(cloud) Ollama** — 标签项（无颜色预警，悬停显示完整提示框）
+- **S: xx%** — 当前 5 小时会话用量百分比，独立颜色预警
+- **W: yy%** — 当周用量百分比，独立颜色预警
+
+### 颜色编码告警
+
+| 级别 | Session 阈值 | Weekly 阈值 | 状态栏背景色 |
+|------|-------------|-------------|-------------|
+| 正常 | < 50% | < 75% | 默认（无高亮） |
+| 警告 | 50% ~ 79% | 75% ~ 89% | 黄色（`statusBarItem.warningBackground`） |
+| 危险 | ≥ 80% | ≥ 90% | 红色（`statusBarItem.errorBackground`） |
 
 ### 悬停提示框
 
-```
-Ollama Cloud Usage
-────────────────────
-Session (5h): 45% used
-  Reset in: 2h 30m
+悬停**标签项**（`$(cloud) Ollama`）查看 Markdown 格式的详细用量信息：
 
-Weekly: 30% used
-  Reset in: 3d 12h
-────────────────────
+```
+☁ Ollama Cloud Usage
+──────────────────────
+Session (5h): 45% used
+  ↻ Reset in: 2h 30m
+
+Weekly: 78% used ⚠ WARNING
+  ↻ Reset in: 3d 12h
+──────────────────────
 Last updated: 14:30:00
 ```
 
@@ -155,10 +168,10 @@ ai-usage-ext/
 | **OllamaProvider** | 获取 `ollama.com/settings` 页面 HTML，通过 cheerio 解析会话/周用量和重置时间 |
 | **CookieManager** | 在 `globalState` 中持久化 Cookie，提供变更通知 |
 | **ConfigManager** | 读写 VSCode 配置项，触发配置变更回调 |
-| **StatusBarManager** | 在状态栏中渲染用量数据，提供颜色编码告警和悬停提示框 |
+| **StatusBarManager** | 在3个独立状态栏项中渲染用量数据（标签/Session/Weekly），各自独立颜色预警，共享 Markdown 格式提示框 |
 | **LoginPanel** | WebView 面板，引导用户完成 Ollama 登录和 Cookie 提取 |
 | **HttpClient** | 基于 Axios 的 HTTP 客户端，支持 Cookie 认证、超时控制和错误分类 |
-| **UsageData** | 类型定义（`UsageData`、`UsageResult`、`UsageStatus`）和工具函数 |
+| **UsageData** | 类型定义（`UsageData`、`UsageResult`、`UsageStatus`）、`UsageType` 枚举、告警阈值常量和工具函数 |
 
 ### 数据流
 
@@ -184,13 +197,16 @@ ai-usage-ext/
 └──────┬──────┘  └──────────────┘
        │
        ▼
-┌────────────────┐
-│ Status Bar      │
-│ Manager         │
-│                 │
-│ 更新显示内容、  │
-│ 颜色、提示框等 │
-└────────────────┘
+┌──────────────────────────────┐
+│ Status Bar Manager            │
+│                               │
+│ ┌──────────┬───────┬───────┐ │
+│ │ Label    │ S:xx% │ W:yy% │ │
+│ │ (提示框) │ (颜色) │(颜色) │ │
+│ └──────────┴───────┴───────┘ │
+│                               │
+│ 3个独立项，各自独立颜色预警    │
+└──────────────────────────────┘
 ```
 
 ## 🔧 开发
